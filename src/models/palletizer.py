@@ -113,6 +113,32 @@ class Palletizer(Generic, EasyResource):  # noqa: F405  (Generic comes from the 
                 "box_height_mm must be greater than zero")
         return
 
+    async def autopack(self, max_boxes_to_pack=None):
+        """The loop: place while there is room, swap a full tray, stop at
+        max_boxes_to_pack."""
+        boxes_per_pallet = self.columns * self.rows * self.layers
+
+        if max_boxes_to_pack is None:
+            max_boxes_to_pack = boxes_per_pallet
+
+        placed = 0
+        while placed < max_boxes_to_pack:
+            # TODO 1: if there is no room, swap the tray and `continue`.
+            if not await self.pallet_has_room():
+                await self.swap_tray()
+                continue
+
+
+            # TODO 2: otherwise place one box.
+            await self.place()
+
+
+            placed += 1
+
+        result = {"Number Packed": placed, "Max Boxes": max_boxes_to_pack}
+        self.logger.info(f"autopack: {result}")
+        return result
+
 
     # The pack pattern, hard-coded for now so the logic runs before it is
     # configurable. The Attributes page turns these four into configuration and
@@ -217,6 +243,15 @@ class Palletizer(Generic, EasyResource):  # noqa: F405  (Generic comes from the 
             return {"picked": await self.pick()}
 
         # Route new verbs here: match the verb, call the method,
+        # autopack: place while there is room, swap full trays.
+        if verb == "autopack":
+            max_boxes_to_pack = command.get("max_boxes_to_pack")
+            if max_boxes_to_pack is not None:
+                try:
+                    max_boxes_to_pack = int(max_boxes_to_pack)
+                except (TypeError, ValueError):
+                    return {"error": "max_boxes_to_pack must be a number"}
+            return await self.autopack(max_boxes_to_pack)
         # return what it returns.
         # place: put one box in the next slot, answer the slot.
         if verb == "place":
